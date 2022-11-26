@@ -197,23 +197,58 @@ class Animation(Asset):
     def has_audio(self) -> bool:
         return len(self.audios) > 0
 
+    ## \return True if this animation has at least one frame; False otherwise.
+    @property
+    def has_frames(self) -> bool:
+        return len(self.bitmaps) > 0
+
+    ## \return True if this animation has only audio and no bitmaps; False otherwise.
+    @property
+    def has_audio_only(self) -> bool:
+        return (self.has_audio) and (not self.has_frames)
+
+    ## \return True if this animation has only bitmaps and no audio; False otherwise.
+    @property
+    def has_frames_only(self) -> bool:
+        return (self.has_frames) and (not self.has_audio)
+
+    ## \return A single Sound object that has all the sounds from this
+    ## animation concatenated into one PCM stream.
+    ## None if there are no sounds in this animation.
+    @property
+    def sound(self) -> Sound:
+        pass
+
     ## Exports this animation to a set of images/audio files or a single animation file.
     ## \param[in] root_directory_path - The directory where the animation frames and audio
     ##            should be exported.
+    ## \param[in] export_sounds_individually - If True, write each entry in self.audios
+    ##            to a separate file. Otherwise, create one audio file that is a simple
+    ##            concatenation of the entries in self.audios.
     ## \param[in] command_line_arguments - All the command-line arguments provided to the 
     ##            script that invoked this function.
     def export(self, root_directory_path: str, command_line_arguments):
-        # CREATE THE DIRECTORY FOR THE EXPORTED ASSET.
-        export_animation_as_one_file = command_line_arguments.animation_format != 'none'
-        if export_animation_as_one_file:
+        # DETERMINE WHERE EXPORTED FRAMES/AUDIO SHOULD BE STORED.
+        compile_animation_into_file = (not self.has_audio_only) and (command_line_arguments.animation_format != 'none')
+        if compile_animation_into_file:
+            # STORE THE COMPONENTS IN A TEMPORARY DIRECTORY.
             # Create a temporary directory for the individual images and audios.
+            # Later these will be compiled into an animation file (like AVI or MP4)
+            # and placed in the provided export directory.
             frame_export_directory_path = tempfile.mkdtemp()
+        elif self.has_audio_only:
+            # DO NOT CREATE A SUBDIRECTORY FOR THIS ANIMATION.
+            # A directory is only needed if the asset will create more
+            # than one exported file. 
+            # 
+            # There are two ways an animation can generate only one exported file:
+            #  - The animation is all audio and export_sounds_individually is False.
+            #  - The animation contains only one bitmap frame and no audio.
+            frame_export_directory_path = root_directory_path
         else:
-            # A directory is only needed if the asset has more 
-            # than one associated file (like an animation with 
-            # multiple image bitmap frames).
+            # CREATE A SUBDIRECTORY.
             frame_export_directory_path = os.path.join(root_directory_path, self.name)
-            Path(frame_export_directory_path).mkdir(parents = True, exist_ok = True)
+            Path(frame_export_directory_path).mkdir(parents = True, exist_ok = True)    
 
         # EXPORT INDIVIDUAL BITMAPS ACCORDING TO THEIR SETTINGS.
         # The export directory will contain files like the following:
@@ -243,6 +278,10 @@ class Animation(Asset):
                     export_filepath_with_extension = f'{export_filepath}.{command_line_arguments.bitmap_format}'
                     reframed_animation.save(
                         export_filepath_with_extension, command_line_arguments.bitmap_format)
+                else:
+                    # EXPORT THE BITMAP AS IS.
+                    # TODO: ISSUE A WARNING.
+                    frame.export(export_filepath, command_line_arguments)  
             else:
                 # EXPORT THE BITMAP AS IS.
                 frame.export(export_filepath, command_line_arguments)
@@ -255,14 +294,11 @@ class Animation(Asset):
         # Up to the number of audio chunks in the animation.
         # (Because many games show many frames while playing one sound chunk, the number of 
         #  audio chunks will probably be much less than the number of frames.)
-        for index, audio in enumerate(self.audios):
-            if audio.name is None:
-                audio.name = f'{index}'
-            export_filepath = os.path.join(frame_export_directory_path, f'{index}')
-            audio.export(export_filepath, command_line_arguments)
+        if len(self.audios) > 0:
+            Sound.convert_via_wave(self.audios, f'{frame_export_directory_path}/audio.{command_line_arguments.audio_format}')
 
         # IF REQUESTED, EXPORT THE ANIMATION AS A SINGLE FILE.
-        if export_animation_as_one_file:
+        if compile_animation_into_file:
             # LIST ALL THE ANIMATION BITMAP FILEPATHS.
             # For bitmaps, ffmpeg supports format string notation.
             # The format string %d.bmp will specify the bitmaps
@@ -270,18 +306,9 @@ class Animation(Asset):
             animation_bitmaps_set = os.path.join(frame_export_directory_path, f'%d.{command_line_arguments.bitmap_format}')
 
             # LIST ALL THE ANIMATION SOUND FILEPATHS.
-            # Because ffmpeg does not support the %d syntax for audio, 
-            # write a temporary file that enumerates all the audio files.
-            audio_set_text_filepath = os.path.join(frame_export_directory_path, 'audios.txt')
-            with open(audio_set_text_filepath, 'w') as audio_set_text_file:
-                for index, audio in enumerate(self.audios):
-                    audio_export_filepath = os.path.join(frame_export_directory_path, f'{audio.name}.{command_line_arguments.audio_format}')
-                    audio_set_text_file.write(f'file {audio_export_filepath}\n')
-            # The conversion command must include some extra options.
-            audio_conversion_command = ['-safe', '0', 
-                '-f', 'concat', 
-                '-i', audio_set_text_filepath, 
-                '-c', 'copy']
+            audio_conversion_command = []
+            if self.has_audio:
+                audio_conversion_command = ['-i', os.path.join(frame_export_directory_path, f'{self.name}.{command_line_arguments.audio_format}')]
 
             # RUN THE CONVERSION THROUGH FFMPEG.
             # The individual frames were exported to a temporary directory,
@@ -300,12 +327,10 @@ class Animation(Asset):
                 animation_filepath]
             # Invoke ffmpeg to combine the video and audio together
             # into a single animation file.
-            with subprocess.Popen(
-                    animation_conversion_command, 
-                    stdin=subprocess.PIPE, 
-                    stdout=subprocess.DEVNULL, 
-                    stderr=subprocess.STDOUT) as ffmpeg:
-                ffmpeg.communicate()
+            subprocess.check_call(
+                animation_conversion_command,
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.STDOUT)
 
     ## Places an animation frame bitmap on a canvas the size of the entire 
     ## animation. Thus, each frame image will have the same dimensions.
@@ -319,7 +344,11 @@ class Animation(Asset):
 
         # CREATE THE FULL-SIZED FRAME TO HOLD THE ANIMATION IMAGE.
         # The full frame must be filled with the alpha color used throughout the game.
+        MAXIMUM_ANIMATION_WIDTH = 1024
+        MAXIMUM_ANIMATION_HEIGHT = 1024
         full_frame_dimensions = (self.minimal_bounding_box.width, self.minimal_bounding_box.height)
+        if full_frame_dimensions[0] > MAXIMUM_ANIMATION_WIDTH or full_frame_dimensions[1] > MAXIMUM_ANIMATION_HEIGHT:
+            return None
         full_frame = Image.new('P', full_frame_dimensions, color = self.alpha_color)
         if bitmap.palette:
             # APPLY THE ORIGINAL PALETTE TO THIS ONE.
