@@ -33,27 +33,32 @@ class Application:
         self.application_name = application_name
 
     ## Parses the files matching the detection entries for this application.
+    ## The files are guaranteed to be parsed in the order the file detection entries
+    ## are provided.
     ## \param[in]  paths - The paths to be searched for matching files.
     ##             Recurses into directories to find matching files.
     ## \param[in] file_detection_entries - Criteria for finding files and parsing them.
     def process(self, paths: List[str], file_detection_entries: List[FileDetectionEntry]):
-        for path in paths:
-            # CHECK IF THE PATH IS A DIRECTORY.
-            # If so, descend into the directory to process each file.
-            # TODO: Will this recurse forever? Is that a good thing?
-            path_is_directory = os.path.isdir(path)
-            if path_is_directory:
-                for filename in os.listdir(path):
-                    # PROCESS ANY FILES IN THE SUB-DIRECTORY.
-                    # Because the listdir function only returns the filename,
-                    # it must be joined with the parent directory path.
-                    sub_directory_path = [os.path.join(path, filename)]
-                    self.process(sub_directory_path, file_detection_entries)
+        for file_detection_entry in file_detection_entries:
+            case_sensitive_search_flag = re.IGNORECASE if not file_detection_entry.case_sensitive else 0
 
-            # PARSE THE FILE.
-            filename: str = os.path.basename(path)
-            for file_detection_entry in file_detection_entries:
-                case_sensitive_search_flag = re.IGNORECASE if not file_detection_entry.case_sensitive else 0
+            for path in paths:
+                # CHECK IF THE PATH IS A DIRECTORY.
+                # If so, descend into the directory to process each file.
+                # TODO: Will this recurse forever? Is that a good thing?
+                path_is_directory = os.path.isdir(path)
+                if path_is_directory:
+                    for filename in os.listdir(path):
+                        # PROCESS ANY FILES IN THE SUB-DIRECTORY.
+                        # Because the listdir function only returns the filename,
+                        # it must be joined with the parent directory path.
+                        sub_directory_path = [os.path.join(path, filename)]
+                        # TODO: Document why only the first file detection entry is passed in
+                        # to the recursive processor. This is to enforce the correct ordering.
+                        self.process(sub_directory_path, [file_detection_entry])
+
+                # PARSE THE FILE.
+                filename: str = os.path.basename(path)
                 file_detection_entry_matches = re.match(file_detection_entry.filename_regex, filename, flags = case_sensitive_search_flag)
                 if file_detection_entry_matches:
                     # PROCESS THE FILE.
@@ -61,14 +66,8 @@ class Application:
                         print(f'Processing matched file {path}')
                         processed_file = file_detection_entry.file_processor(path)
                         self.files.append(processed_file)
-
-                    # END PROCESSING FOR THIS FILE.
                     # No file should be processed more than once.
                     break
-
-            no_matching_files = len(self.files) == 0
-            if no_matching_files:
-                logging.warning(f'No matching files in filepath {path}')
 
     ## Exports all files in the application.
     ## If any assets have an export method, that method is called.
@@ -122,7 +121,7 @@ class Application:
             # RETURN THE HEXDUMP DICTIONARY.
             return hex_dump
         # Any byte arrays should be serialized by the preceding function.
-        jsons.set_serializer(lambda bytes, **_: hex_dump_dictionary(bytes), bytes)
+        jsons.set_serializer(lambda bytes, **_: '<bytes>', bytes) # ex_dump_dictionary(bytes)
         jsons.set_serializer(lambda i, **_: '<image>', Image.Image)
         jsons.set_serializer(lambda i, **_: '<palette>', ImagePalette.ImagePalette)
         jsons.set_serializer(lambda i, **_: '<mmap>', mmap.mmap)
@@ -137,12 +136,14 @@ class Application:
         for index, file in enumerate(self.files):
             # EXPORT THE FILE.
             # This method creates a directory for the file.
+            print(f'Exporting assets in {file.filepath}')
             file.export(application_export_subdirectory, command_line_arguments)
 
         # EXPORT THE JSON FOR THE APPLICATION.
-        json_export_filename = f'{self.application_name}.json'
-        json_export_filepath = os.path.join(application_export_subdirectory, json_export_filename)
-        with open(json_export_filepath, 'w') as json_file:
-            asset_tree = jsons.dump(self.files)
-            # TOOD: Ensure this JSON is pretty printed.
-            json.dump(asset_tree, json_file)
+        #print(f'Exporting JSON for whole application')
+        #json_export_filename = f'{self.application_name}.json'
+        #json_export_filepath = os.path.join(application_export_subdirectory, json_export_filename)
+        #with open(json_export_filepath, 'w') as json_file:
+        #    asset_tree = jsons.dump(self.files, strip_privates = True)
+        #    # TODO: Ensure this JSON is pretty printed.
+        #    json.dump(asset_tree, json_file)
