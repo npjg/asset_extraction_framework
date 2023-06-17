@@ -9,10 +9,10 @@ class BoundingBox:
         self.right = right
 
         if self.top is not None and self.bottom is not None:
-            assert self.bottom > self.top
+            assert self.bottom >= self.top
         
         if self.left and self.right:
-            assert self.right > self.left
+            assert self.right >= self.left
 
     @property
     def width(self):
