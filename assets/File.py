@@ -85,6 +85,8 @@ class File:
         # RETURN THE EXTENSION.
         return os.path.splitext(self.filename)[1].lstrip('.')
 
-    ## Verifies the stream is at the correct byte position.
-    def assert_at_stream_position(self, expected_position: int):
-        assert_equal(self.stream.tell(),  expected_position, 'stream position')
+    ## Verifies the binary stream is at the correct byte position.
+    ## \param[in] expected_position - The expected byte position of the binary stream.
+    ## \param[in] warn_only - When True, do not raise an exception for a failed assertion; rather, print a warning and return False.
+    def assert_at_stream_position(self, expected_position: int, warn_only: bool = False) -> bool:
+        return assert_equal(self.stream.tell(),  expected_position, 'stream position', warn_only)
