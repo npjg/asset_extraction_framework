@@ -19,41 +19,34 @@ class Animation(Asset):
     ## Parses the animation.
     def __init__(self):
         super().__init__()
-        
-        # DEFINE REQUIRED ANIMATION METADATA FIELDS.
         # The animation cannot be exported without these required properties.
         # The width and height are expressed in pixels.
         self._width: Optional[int] = None
         self._height: Optional[int] = None
-
-        # DEFINE ANIMATION COORDINATES.
+        self.__minimal_bounding_box = None
+        self.__animation_framing_applied: bool = False
         # WIthout these, the animation can only be exported standalone.
         # If frames have coordinates defined absolutely, these must be provided.
         self._left: Optional[int] = None
         self._top: Optional[int] = None
         self._right: Optional[int] = None
         self._bottom: Optional[int] = None
-
-        # DEFINE THE ALPHA COLOR.
         # This is the color (or color index) to use when reframing individual bitmaps 
         # to have the same dimensions as the overall animation.
-        self.alpha_color: int = 0xff
-
-        # DEFINE PLAYBACK RATES.
+        self._alpha_color: int = 0xff
         # Currently, only constant-framerate animations are supported. The framerate is specified
         # in frames per second.
         # TODO: Framerate is not currently used for export.
-        self.framerate: Optional[float] = None
+        self._framerate: Optional[float] = None
         # Many games encode animations as a series of frames followed by a constant-duration
         # audio stream, so rather than explicitly providing a framerate, the number of frames per
         # audio stream can be provided so the framerate can be calculated implicitly.
-        self.bitmaps_per_audio: Optional[int] = None
-
-        # DEFINE WHERE TO HOLD ANIMATION FRAMES AND AUDIO.
+        self._bitmaps_per_audio: Optional[int] = None
         # Any animation class that inherits from this one should store
         # its frames and audio here.
-        self.bitmaps: List[RectangularBitmap] = []
-        self.audios: List[Sound] = []
+        self._keyframes: List[RectangularBitmap] = []
+        self.frames: List[RectangularBitmap] = []
+        self.sounds: List[Sound] = []
 
     ## \return The nominal width of the animation.
     ## Does not do any calculation on the frames; instead relies on the 
@@ -145,12 +138,12 @@ class Animation(Asset):
             # There is not enough information to calculate this coordinate.
             return None
 
-    ## \return The nominal bounding box (as claimed by the frames' coordinates.
+    ## \return The nominal bounding box (as claimed by the frames' coordinates).
     ## This is not guaranteed to be the minimal bounding box or 
     ## even contain all frames of the animation at all. To calculate
     ## the minimal bounding box, use the minimal_bounding_box method.
     @property
-    def bounding_box(self) -> BoundingBox:
+    def _bounding_box(self) -> BoundingBox:
         # Note that this bounding box might not be the true bounding box the animation, 
         # as would be calculated from the actual dimensions of the frames in the animation.
         return BoundingBox(self.top, self.left, self.bottom, self.right)
@@ -162,23 +155,26 @@ class Animation(Asset):
     ## When a game provides inaccurate nominal animation bounding boxes, this property
     ## might return better results at the expense of a bit more calculation.
     @property
-    def minimal_bounding_box(self) -> BoundingBox:
+    def _minimal_bounding_box(self) -> BoundingBox:
+        # RETURN THE CACHED BOUNDING BOX.
+        if self.__minimal_bounding_box is not None: 
+            return self.__minimal_bounding_box
+
         # MAKE SURE FRAMES ARE PRESENT.
         # If there are not frames present, the calls further on will error out
         # because the will be fed empty lists.
-        no_frames_present: bool = (len(self.bitmaps) == 0)
+        no_frames_present: bool = (len(self.frames) == 0)
         if no_frames_present:
             return
 
         # GET ALL THE BOUNDING BOXES IN THE ANIMATION.
         frame_bounding_boxes: List[BoundingBox] = []
-        for frame in self.bitmaps:
-            bounding_box: bool = frame.bounding_box
+        for frame in self.frames:
+            bounding_box: bool = frame._bounding_box
             if bounding_box is not None:
                 frame_bounding_boxes.append(bounding_box)
-        # DO NOT CONTINUE IF THERE ARE NO BOUNDING BOXES.
         if len(frame_bounding_boxes) == 0:
-            return
+            return None
 
         # FIND THE SMALLEST RECTANGLE THAT CONTAINS ALL THE FRAME BOUNDING BOXES.
         # This smallest rectangle will have the following vertices:
@@ -190,27 +186,28 @@ class Animation(Asset):
         minimal_top: int = min([bounding_box.top for bounding_box in frame_bounding_boxes])
         minimal_right: int = max([bounding_box.right for bounding_box in frame_bounding_boxes])
         minimal_bottom: int = max([bounding_box.bottom for bounding_box in frame_bounding_boxes])
-        return BoundingBox(minimal_top, minimal_left, minimal_bottom, minimal_right)
+        self.__minimal_bounding_box = BoundingBox(minimal_top, minimal_left, minimal_bottom, minimal_right)
+        return self.__minimal_bounding_box
 
     ## \return True if this animation has at least one audio chunk; False otherwise.
     @property
-    def has_audio(self) -> bool:
-        return len(self.audios) > 0
+    def __has_audio(self) -> bool:
+        return len(self.sounds) > 0
 
     ## \return True if this animation has at least one frame; False otherwise.
     @property
-    def has_frames(self) -> bool:
-        return len(self.bitmaps) > 0
+    def __has_frames(self) -> bool:
+        return len(self.frames) > 0
 
     ## \return True if this animation has only audio and no bitmaps; False otherwise.
     @property
-    def has_audio_only(self) -> bool:
-        return (self.has_audio) and (not self.has_frames)
+    def __has_audio_only(self) -> bool:
+        return (self.__has_audio) and (not self.__has_frames)
 
     ## \return True if this animation has only bitmaps and no audio; False otherwise.
     @property
-    def has_frames_only(self) -> bool:
-        return (self.has_frames) and (not self.has_audio)
+    def __has_frames_only(self) -> bool:
+        return (self.__has_frames) and (not self.__has_audio)
 
     ## \return A single Sound object that has all the sounds from this
     ## animation concatenated into one PCM stream.
@@ -229,14 +226,7 @@ class Animation(Asset):
     ##            script that invoked this function.
     def export(self, root_directory_path: str, command_line_arguments):
         # DETERMINE WHERE EXPORTED FRAMES/AUDIO SHOULD BE STORED.
-        compile_animation_into_file = (not self.has_audio_only) and (command_line_arguments.animation_format != 'none')
-        if compile_animation_into_file:
-            # STORE THE COMPONENTS IN A TEMPORARY DIRECTORY.
-            # Create a temporary directory for the individual images and audios.
-            # Later these will be compiled into an animation file (like AVI or MP4)
-            # and placed in the provided export directory.
-            frame_export_directory_path = tempfile.mkdtemp()
-        elif self.has_audio_only:
+        if self.__has_audio_only:
             # DO NOT CREATE A SUBDIRECTORY FOR THIS ANIMATION.
             # A directory is only needed if the asset will create more
             # than one exported file. 
@@ -256,35 +246,10 @@ class Animation(Asset):
         #  - 1.bmp
         #    ...
         #  Up to the number of bitmaps in this animation.
-        for index, frame in enumerate(self.bitmaps):
+        self._reframe_to_animation_size(command_line_arguments)
+        for index, frame in enumerate(self.frames):
             export_filepath = os.path.join(frame_export_directory_path, f'{index}')
-            # DETERMINE WHETHER TO REFRAHE THIS BITMAP.
-            # If we want to export a single animation file, (animation format is not 'none'), 
-            # this image must be resized (reframed) to the full size of the animation.
-            # This ensures all bitmaps in the exported animation have the same dimensions.
-            # The exported animation would look kooky otherwise. The user can also request
-            # this reframing for frame-wise exports.
-            apply_animation_framing: bool = (command_line_arguments.bitmap_options == 'animation_framing') or \
-                (command_line_arguments.animation_format != 'none')
-            if apply_animation_framing:
-                # RESIZE THIS BITMAP TO THE FULL ANIMATION SIZE.
-                # Reframing the bitmap implies there are uncompressed pixels available.
-                # It would not make sense to resize unproccessed pixels, becuase we cannot
-                # understand them.
-                reframed_animation: Image = self._reframe_to_animation_size(frame)
-                if reframed_animation is not None:
-                    # Because we are working with a PIL Image now, we will just export it directly.
-                    # No need to add complexity by creating the indirection of a dummy RectangularBitmap object.
-                    export_filepath_with_extension = f'{export_filepath}.{command_line_arguments.bitmap_format}'
-                    reframed_animation.save(
-                        export_filepath_with_extension, command_line_arguments.bitmap_format)
-                else:
-                    # EXPORT THE BITMAP AS IS.
-                    # TODO: ISSUE A WARNING.
-                    frame.export(export_filepath, command_line_arguments)  
-            else:
-                # EXPORT THE BITMAP AS IS.
-                frame.export(export_filepath, command_line_arguments)
+            frame.export(export_filepath, command_line_arguments)
 
         # EXPORT INDIVIDUAL SOUNDS ACCORDING TO THEIR SETTINGS.
         # The export directory will contain files like the following:
@@ -294,68 +259,58 @@ class Animation(Asset):
         # Up to the number of audio chunks in the animation.
         # (Because many games show many frames while playing one sound chunk, the number of 
         #  audio chunks will probably be much less than the number of frames.)
-        if len(self.audios) > 0:
-            Sound.convert_via_wave(self.audios, f'{frame_export_directory_path}/audio.{command_line_arguments.audio_format}')
-
-        # IF REQUESTED, EXPORT THE ANIMATION AS A SINGLE FILE.
-        if compile_animation_into_file:
-            # LIST ALL THE ANIMATION BITMAP FILEPATHS.
-            # For bitmaps, ffmpeg supports format string notation.
-            # The format string %d.bmp will specify the bitmaps
-            # in directory order.
-            animation_bitmaps_set = os.path.join(frame_export_directory_path, f'%d.{command_line_arguments.bitmap_format}')
-
-            # LIST ALL THE ANIMATION SOUND FILEPATHS.
-            audio_conversion_command = []
-            if self.has_audio:
-                audio_conversion_command = ['-i', os.path.join(frame_export_directory_path, f'{self.name}.{command_line_arguments.audio_format}')]
-
-            # RUN THE CONVERSION THROUGH FFMPEG.
-            # The individual frames were exported to a temporary directory,
-            # but the animation should be exported to the requested export 
-            # directory provided by the user.
-            animation_filepath = os.path.join(root_directory_path, f'{self.name}.{command_line_arguments.animation_format}')
-            animation_conversion_command = ['ffmpeg', '-y', \
-                '-r', f'{self.bitmaps_per_audio}', \
-                # First, we specify the set of bitmaps.
-                '-i', animation_bitmaps_set, \
-                # Then, we specify the set of audio files.
-                *audio_conversion_command,
-                # Lossless compression should be applied.
-                '-vcodec', 'libx264', \
-                '-crf', '0', \
-                animation_filepath]
-            # Invoke ffmpeg to combine the video and audio together
-            # into a single animation file.
-            subprocess.check_call(
-                animation_conversion_command,
-                stdout=subprocess.DEVNULL, 
-                stderr=subprocess.STDOUT)
+        if len(self.sounds) > 0:
+            Sound.convert_via_wave(self.sounds, f'{frame_export_directory_path}/audio.{command_line_arguments.audio_format}')
 
     ## Places an animation frame bitmap on a canvas the size of the entire 
     ## animation. Thus, each frame image will have the same dimensions.
     ## \return The reframed animation frame bitmap if it exists, None otherwise.
     ## \param[in] bitmap - The rectangular bitmap whose image should be reframed.
-    def _reframe_to_animation_size(self, bitmap: RectangularBitmap) -> Optional[Image.Image]:
-        # GET THE IMAGE.
-        image: Image = bitmap.bitmap
-        if image is None:
-            return None
+    def _reframe_to_animation_size(self, command_line_arguments):
+        # DETERMINE WHETHER TO REFRAHE THIS BITMAP.
+        # If we want to export a single animation file, (animation format is not 'none'), 
+        # this image must be resized (reframed) to the full size of the animation.
+        # This ensures all bitmaps in the exported animation have the same dimensions.
+        # The exported animation would look kooky otherwise. The user can also request
+        # this reframing for frame-wise exports.
+        apply_animation_framing: bool = (command_line_arguments.bitmap_options == 'animation_framing') or \
+            (command_line_arguments.animation_format != 'none')
+        if not apply_animation_framing or (self.__animation_framing_applied == True):
+            # RESIZE THIS BITMAP TO THE FULL ANIMATION SIZE.
+            # Reframing the bitmap implies there are uncompressed pixels available.
+            # It would not make sense to resize unproccessed pixels, becuase we cannot
+            # understand them.
+            return
 
-        # CREATE THE FULL-SIZED FRAME TO HOLD THE ANIMATION IMAGE.
-        # The full frame must be filled with the alpha color used throughout the game.
-        MAXIMUM_ANIMATION_WIDTH = 1024
-        MAXIMUM_ANIMATION_HEIGHT = 1024
-        full_frame_dimensions = (self.minimal_bounding_box.width, self.minimal_bounding_box.height)
-        if full_frame_dimensions[0] > MAXIMUM_ANIMATION_WIDTH or full_frame_dimensions[1] > MAXIMUM_ANIMATION_HEIGHT:
-            return None
-        full_frame = Image.new('P', full_frame_dimensions, color = self.alpha_color)
-        if bitmap.palette:
-            # APPLY THE ORIGINAL PALETTE TO THIS ONE.
-            full_frame.putpalette(bitmap.palette.rgb_colors)
+        bounding_box = self._minimal_bounding_box
+        for frame in self.frames:
+            bitmap: Image = frame._exportable_image
+            if bitmap is None:
+                frame.create_exportable_image_from_pixels()
+                bitmap = frame._exportable_image
+                if bitmap is None:
+                    continue
 
-        # PASTE THE ANIMATION FRAME IN THE APPROPRIATE PLACE.
-        image_location = (bitmap.left - self.minimal_bounding_box.left, bitmap.top - self.minimal_bounding_box.top)
-        full_frame.paste(image, box = image_location)
-        return full_frame
-        
+            # CREATE THE FULL-SIZED FRAME TO HOLD THE ANIMATION IMAGE.
+            # The full frame must be filled with the alpha color used throughout the game.
+            MAXIMUM_ANIMATION_WIDTH = 5000
+            MAXIMUM_ANIMATION_HEIGHT = 5000
+            frame_exceeds_max_width = bounding_box.width > MAXIMUM_ANIMATION_WIDTH
+            frame_exceeds_max_height = bounding_box.height > MAXIMUM_ANIMATION_HEIGHT
+            if frame_exceeds_max_width or frame_exceeds_max_height:
+                continue
+            full_frame_dimensions = (bounding_box.width, bounding_box.height)
+            full_frame = Image.new('P', full_frame_dimensions, color = self._alpha_color)
+            if frame._palette is not None:
+                # full_frame.palette = bitmap.palette
+                full_frame.putpalette(frame._palette.raw_rgb_bytes())
+
+            # PASTE THE ANIMATION FRAME IN THE APPROPRIATE PLACE.
+            bitmap_left_top_with_respect_to_animation = (frame.left - bounding_box.left, frame.top - bounding_box.top)
+            full_frame.paste(bitmap, box = bitmap_left_top_with_respect_to_animation)
+            frame._exportable_image = full_frame
+        # Applying the framing or checking if it has been applied is pretty costly,
+        # so a flag will be set instead to make sure it is not done twice. This can 
+        # happen if, for instance, client code needs to apply keyframes and thus needs
+        # the animation framing to be applied first.
+        self.__animation_framing_applied = True
