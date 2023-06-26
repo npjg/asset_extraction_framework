@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asset_extraction_framework"
-version = "0.9.1"
+version = "0.9.2"
 description = "Extract multimedia assets from legacy software"
 readme = "README.md"
 authors = [{ name = "npjg" }]
