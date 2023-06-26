@@ -4,7 +4,7 @@ import mmap
 import os
 from pathlib import Path
 
-from assets.Asserts import assert_equal
+from .Asserts import assert_equal
 
 ## Models a file (whether actually on the filesystem, or logically from an in-memory archive)
 ## that holds one or more assets.
@@ -58,7 +58,11 @@ class File:
         Path(directory_path).mkdir(parents = True, exist_ok = True)
 
         # EXPORT THE ASSETS INTO THIS FILE'S DIRECTORY.
-        for index, asset in enumerate(self.assets):
+        if isinstance(self.assets, dict):
+            assets_list = self.assets.values()
+        else:
+            assets_list = self.assets
+        for index, asset in enumerate(assets_list):
             # SET THE ASSET NAME IF IT IS NOT ALREADY SET.
             # This ensures every asset has a unique name within this file.
             if asset.name is None:
