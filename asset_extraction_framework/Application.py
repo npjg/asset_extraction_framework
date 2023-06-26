@@ -29,7 +29,6 @@ class Application:
     def __init__(self, application_name: str):
         # CREATE A PLACE TO STORE THE FILES.
         self.files: List[File] = []
-
         self.application_name = application_name
 
     ## Parses the files matching the detection entries for this application.
@@ -132,7 +131,6 @@ class Application:
         # First, we want to create a directory to hold all the exported files
         # from this application.
         application_export_subdirectory: str = os.path.join(command_line_arguments.export, self.application_name)
-        # logging.debug(f'Exporting to {application_export_subdirectory}')
         for index, file in enumerate(self.files):
             # EXPORT THE FILE.
             # This method creates a directory for the file.
@@ -140,10 +138,9 @@ class Application:
             file.export(application_export_subdirectory, command_line_arguments)
 
         # EXPORT THE JSON FOR THE APPLICATION.
-        #print(f'Exporting JSON for whole application')
-        #json_export_filename = f'{self.application_name}.json'
-        #json_export_filepath = os.path.join(application_export_subdirectory, json_export_filename)
-        #with open(json_export_filepath, 'w') as json_file:
-        #    asset_tree = jsons.dump(self.files, strip_privates = True)
-        #    # TODO: Ensure this JSON is pretty printed.
-        #    json.dump(asset_tree, json_file)
+        print(f'Exporting JSON for whole application')
+        json_export_filename = f'{self.application_name}.json'
+        json_export_filepath = os.path.join(application_export_subdirectory, json_export_filename)
+        with open(json_export_filepath, 'w') as json_file:
+            asset_tree = jsons.dump(self.files, strip_privates = True)
+            json.dump(asset_tree, json_file, indent = 2)
