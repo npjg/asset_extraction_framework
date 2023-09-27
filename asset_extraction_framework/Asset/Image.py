@@ -144,12 +144,6 @@ class RectangularBitmap(Asset):
             (self._bits_per_pixel is not None) and \
             (not self.__is_empty)
 
-    # \return True when the image has one zero and one nonzero dimension.
-    # The image should not be processed in this state.
-    @property
-    def __is_inconsistent(self) -> bool:
-        return (self.width == 0 and self.height != 0) or (self.width != 0 and self.height == 0)
-
     ## \return True when the uncompressed image pixels have the same length
     ## as the expected length; False otherwise.
     @property
