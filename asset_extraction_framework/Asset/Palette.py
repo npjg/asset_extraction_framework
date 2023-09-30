@@ -64,10 +64,10 @@ class RgbPalette(Asset):
 
     def raw_rgb_bytes(self, align_entries: bool = False) -> bytes:
         self._raw_bytes.seek(0)
-        raw_bgr_bytes = bytearray()
+        raw_rgb_bytes = bytearray()
         for index in range(self._total_palette_entries):
             # READ THIS COLOR TUPLE.
-            bgr_color_tuple = self._raw_bytes.read(3)
+            rgb_color_tuple = self._raw_bytes.read(3)
             if self._has_entry_alignment:
                 self._raw_bytes.read(1)
 
@@ -80,9 +80,9 @@ class RgbPalette(Asset):
                 # The slice notation below is used due to the following behavior:
                 #  - bytes[0] -> int (must be re-encoded to bytes, which is wasteful),
                 #  - bytes[0:1] -> bytes[0], but still as bytes.
-                blue_color_index = bgr_color_tuple[0:1]
-                green_color_index = bgr_color_tuple[1:2]
-                red_color_index = bgr_color_tuple[2:3]
+                blue_color_index = rgb_color_tuple[0:1]
+                green_color_index = rgb_color_tuple[1:2]
+                red_color_index = rgb_color_tuple[2:3]
                 rgb_color_tuple = red_color_index + green_color_index + blue_color_index
 
             # ENSURE THE RIGHT PADDING IS ADDED.
@@ -90,10 +90,10 @@ class RgbPalette(Asset):
             necessary_padding_not_present = (not self._has_entry_alignment) and (align_entries)
             if unnecessary_padding_present:
                 # REMOVE THE PADDING BYTE.
-                bgr_color_tuple = bgr_color_tuple[0:4]
+                rgb_color_tuple = rgb_color_tuple[0:4]
             elif necessary_padding_not_present:
-                bgr_color_tuple += b'\x00'
+                rgb_color_tuple += b'\x00'
 
             # STORE THIS COLOR TUPLE.
-            raw_bgr_bytes += bgr_color_tuple
-        return raw_bgr_bytes
+            raw_rgb_bytes += rgb_color_tuple
+        return raw_rgb_bytes
