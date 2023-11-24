@@ -12,7 +12,7 @@ class RgbPalette(Asset):
     ##            to read. Each color entry has a red, green, and blue color entry.
     ## \param[in] blue_green_red_order - If True, indicate colors are ordered BGR in the stream.
     ##            Otherwise, indicate colors are ordered standard RGB.
-    def __init__(self, file, has_entry_alignment: bool, total_palette_entries: int = 0x100, blue_green_red_order: bool = False):
+    def __init__(self, stream, has_entry_alignment: bool, total_palette_entries: int = 0x100, blue_green_red_order: bool = False):
         # STORE THE PARAMETERS.
         self._total_palette_entries = total_palette_entries
         self._has_entry_alignment = has_entry_alignment
@@ -21,7 +21,7 @@ class RgbPalette(Asset):
         # READ THE PALETTE.
         palette_entry_size_in_bytes = 4 if has_entry_alignment else 3
         total_palette_bytes = palette_entry_size_in_bytes * total_palette_entries
-        self._raw_bytes = BytesIO(file.stream.read(total_palette_bytes))
+        self._raw_bytes = BytesIO(stream.read(total_palette_bytes))
 
     ## Returns the definition of the palette in blue-green-red (BGR) order.
     ## \param[in] align_entries - Align each color tuple to the dword boundary 
