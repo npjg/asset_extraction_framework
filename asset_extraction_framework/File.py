@@ -36,6 +36,7 @@ class File:
             with open(filepath, mode = 'rb') as file:
                 # By specifying a length of zero, we will map the whole stream.
                 self.stream = mmap.mmap(file.fileno(), length = 0, access = mmap.ACCESS_READ)
+            self.length = os.path.getsize(filepath)
         only_stream_provided: bool = stream is not None
         if only_stream_provided:
             # USE THE EXISTING STREAM.
