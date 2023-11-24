@@ -1,5 +1,6 @@
 import argparse
 import logging
+from typing import List
 
 ## Parses command-line arguments for an asset extraction script.
 ## \param[in] application_name - The name and version of the application from which assets
@@ -63,10 +64,10 @@ class CommandLineArguments:
     self.argument_parser.add_argument("--debug", action = "store_true", default = False, help = debug_argument_help)
 
   # Gets the command-line arguments and acts on any global settings specified therein.
-  def parse(self): # -> Namespace:
+  def parse(self, raw_command_line: List[str] = None):
     # PARSE THE ARGUMENTS.
     # TODO: Specify the type here.
-    arguments =  self.argument_parser.parse_args()
+    arguments =  self.argument_parser.parse_args(raw_command_line)
 
     # SET THE GLOBAL DEBUG LEVEL.
     # This level should not change through the life of the application.
