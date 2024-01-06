@@ -1,5 +1,6 @@
 
 from io import BytesIO
+from functools import lru_cache
 
 from .Asset import Asset
 
@@ -27,7 +28,10 @@ class RgbPalette(Asset):
     ## \param[in] align_entries - Align each color tuple to the dword boundary 
     ##             (32 bits). Since there are only three colors of 8 bits each,
     ##             the last 8 bits should always be zero.
-    ## 
+    ## To prevent this rather expensive computation from occurring every time we retrieve
+    ## the palette bytes, we will cache the result of this function call with the given args.
+    ## Note that this will cause issues if the self._raw_bytes changes between runs, but that isn't expected.
+    @lru_cache(maxsize = 2)
     def raw_bgr_bytes(self, align_entries: bool = True) -> bytearray:
         self._raw_bytes.seek(0)
         raw_bgr_bytes = bytearray()
@@ -62,6 +66,10 @@ class RgbPalette(Asset):
             raw_bgr_bytes += bgr_color_tuple
         return raw_bgr_bytes
 
+    ## To prevent this rather expensive computation from occurring every time we retrieve
+    ## the palette bytes, we will cache the result of this function call with the given args.
+    ## Note that this will cause issues if the self._raw_bytes changes between runs, but that isn't expected.
+    @lru_cache(maxsize = 2)
     def raw_rgb_bytes(self, align_entries: bool = False) -> bytes:
         self._raw_bytes.seek(0)
         raw_rgb_bytes = bytearray()
