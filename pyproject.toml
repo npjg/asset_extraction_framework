@@ -20,7 +20,8 @@ requires-python = ">=3.9"
 dependencies = [
     "Pillow>=9.2.0",
     "numpy>=1.23.0",
-    "jsons>=1.6.2"
+    "jsons>=1.6.2",
+    "hexdump2>=1.1"
 ]
 
 [tool.setuptools_scm]
