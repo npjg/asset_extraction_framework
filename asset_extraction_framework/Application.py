@@ -17,10 +17,14 @@ import mmap
 ## Uses regular expressions to link the filenames of application files,
 ## as defined by regular expressions, to file parser classes in this application.
 class FileDetectionEntry:
-    def __init__(self, filename_regex: str, case_sensitive: bool, file_processor):
+    def __init__(self, filename_regex: str, case_sensitive: bool, file_processor, filename_sorting_algorithm = sorted):
         self.filename_regex = filename_regex
         self.case_sensitive = case_sensitive
         self.file_processor = file_processor
+        # When enumerating files in a directory, filename order cannot be relied upon 
+        # and is an artifact of the filesystem. So this allows you to define a custom
+        # sorting algorithm.
+        self.filename_sorting_algorithm = filename_sorting_algorithm
 
 ## Represents an application whose assets we wish to export.
 ## An application contains a collection of files, which each
@@ -47,7 +51,12 @@ class Application:
                 # TODO: Will this recurse forever? Is that a good thing?
                 path_is_directory = os.path.isdir(path)
                 if path_is_directory:
-                    for filename in os.listdir(path):
+                    # Filename sorting order cannot be relied upon and is an artifact of the filesystem.
+                    # This option brings some sanity to that.
+                    directory_listing = os.listdir(path)
+                    if file_detection_entry.filename_sorting_algorithm is not None:
+                        directory_listing = file_detection_entry.filename_sorting_algorithm(directory_listing)
+                    for filename in directory_listing:
                         # PROCESS ANY FILES IN THE SUB-DIRECTORY.
                         # Because the listdir function only returns the filename,
                         # it must be joined with the parent directory path.
