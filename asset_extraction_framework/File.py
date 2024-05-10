@@ -138,5 +138,19 @@ class File:
         export_directory = self.create_export_directory(root_directory_path)
         json_filepath = os.path.join(export_directory, f"{self.filename}.json")
         with open(json_filepath, 'w') as json_file:
+            # TODO: Add these performance enhancements to speed up the serialization.
+            # From https://jsons.readthedocs.io/en/latest/faq.html:
+            #  With large data sets, it may take some time for jsons to dump or load. 
+            #  This is caused by several checks and scans that jsons does. You can 
+            #  increase the speed significantly by using “strict mode”:
+            #   jsons.dump(some_obj, strict=True). 
+            #  Also make sure to provide type hints for your classes’ attributes. 
+            #  This will allow jsons to scan your class only once and use that to get
+            #  the attributes of every object of that class it encounters.
+            #
+            # On top of that, you could see if parallelization gains you anything: 
+            #   jsons.dump(some_obj, strict=True, tasks=4). 
+            # By default a Process is spawned per task, 
+            # but you can also choose to use Thread by providing task_type=Thread.
             file_as_dictionary = jsons.dump(self, strip_privates = strip_privates, fork_inst = self.json_serializer)
-            json.dump(file_as_dictionary, json_file)
+            json.dump(file_as_dictionary, json_file, indent = 4)
