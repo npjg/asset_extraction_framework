@@ -3,6 +3,10 @@ from dataclasses import dataclass
 import mmap
 import os
 from pathlib import Path
+import json
+
+import jsons
+from PIL import Image, ImagePalette
 
 from .Asserts import assert_equal
 
@@ -16,11 +20,12 @@ class File:
     ## NOTE: It is an error to provide both a filepath and a stream, as the source of the data
     ##       is then ambiguous.
     def __init__(self, filepath: str = None, stream = None):
-        # CREATE A PLACE TO HOLD THE ASSETS IN THIS FILE.
-        self.assets = []
-
-        # SET THE FILEPATH FOR THIS FILE.
         self.filepath = filepath
+
+        # CREATE A CUSTOM JSON SERIALIZER.
+        # Client code can add additional serialization properties as desired,
+        # and these can take effect per file.
+        self.json_serializer = jsons.fork()
 
         # MAP THE FILE DATA.
         # A filepath can be provided to open a file from disk, or an in-memory binary stream can be provided.
@@ -49,30 +54,10 @@ class File:
     ## \param[in] root_directory_path - The root directory where the assets should be exported.
     ##            A subdirectory named after this file will be created in the root, 
     ##            and asset exporters may create initial subdirectories.
-    ## \param[in] command_line_arguments - All the command-line arguments provided to the 
-    ##            script that invoked this function, so asset exporters can read any 
-    ##            necessary formatting options.
     ## \return The subdirectory named after this file created in the provided root.
-    def export(self, root_directory_path: str, command_line_arguments) -> str:
-        # CREATE THE DIRECTORY FOR THIS FILE.
+    def create_export_directory(self, root_directory_path: str) -> str:
         directory_path = os.path.join(root_directory_path, self.filename)
         Path(directory_path).mkdir(parents = True, exist_ok = True)
-
-        # EXPORT THE ASSETS INTO THIS FILE'S DIRECTORY.
-        if isinstance(self.assets, dict):
-            assets_list = self.assets.values()
-        else:
-            assets_list = self.assets
-        for index, asset in enumerate(assets_list):
-            # SET THE ASSET NAME IF IT IS NOT ALREADY SET.
-            # This ensures every asset has a unique name within this file.
-            if asset.name is None:
-                asset.name = f'{index}'
-
-            # EXPORT THE ASSET.
-            asset.export(directory_path, command_line_arguments)
-        
-        # RETURN THE PATH OF THE CREATED DIRECTORY.
         return directory_path
 
     ## Seeks backward from the current stream position.
@@ -95,3 +80,63 @@ class File:
     ## \param[in] warn_only - When True, do not raise an exception for a failed assertion; rather, print a warning and return False.
     def assert_at_stream_position(self, expected_position: int, warn_only: bool = False) -> bool:
         return assert_equal(self.stream.tell(),  expected_position, 'stream position', warn_only)
+
+    ## All objects accessible from a file in this application are dumped to JSON,
+    ## except the following, which are replaced with placeholders.
+    ##  - PIL objects (images and palettes).
+    ##    These objects contain a lot of internal information that isn't useful to
+    ##    outside observers.
+    ##  - Binary streams (including mmap objects).
+    ##  - Any byte arrays are dumped to a JSON hexdump format if they are shorter
+    ##    than a maximum length. Otherwise, they are replaced with a placeholder.
+    def export_metadata(self, root_directory_path, strip_privates = True, maximum_hexdump_length = 0x6f, hexdump_row_length = 0x10):
+        # ENABLE SERIALIZING BYTE ARRAYS TO JSON.
+        # Because Python only supports one-line lambdas, we first define a standalone function
+        # that creates a hexadecimal dump of a byte array to a dictionary, 
+        # where each key is the hexadecimal starting address of a row of a custom length
+        # and each value is each in that row byte in two-digit hexadecimal notation.
+        def hex_dump_dictionary(bytes: bytes, maximum_hexdump_length = 0x6f, hexdump_row_length = 0x10):
+            # CHECK THE LENGTH.
+            # To avoid clogging the exported JSON with super-long binary dumps,
+            # a dump will only be created if the total length of this byte array
+            # is less than a specified maximum. If the amount is over this maximum,
+            # a placeholder is returned instead of the hexdump.
+            total_length = len(bytes)
+            if total_length > maximum_hexdump_length:
+                return '<blob>'
+
+            # CREATE THE HEXDUMP.
+            # The hexsump is stored as a dictionary with entries like the following:
+            # <starting_offset>: <byte> <byte> <byte> ... <byte> [up to the maximum row length]
+            hex_dump = {}
+            for index in range(0, total_length, hexdump_row_length):
+                # RECORD THE STARTING OFFSET.
+                # This is the location of the first byte in this line.
+                # Because JSON does not permit hexadecimal constants as integers,
+                # each line's starting offset is in a string.
+                starting_offset: str = f'0x{index:02x}'
+
+                # GET THE BYTES FOR THIS ROW.
+                raw_row_bytes = bytes[index:index + hexdump_row_length]
+                hex_row_bytes = [f'{byte:02x}' for byte in raw_row_bytes]
+                # Each byte is separated by a single space.
+                row_string = ' '.join(hex_row_bytes)
+                hex_dump[starting_offset] = row_string
+
+            # RETURN THE HEXDUMP DICTIONARY.
+            return hex_dump
+
+        # CONFIGURE THE JSON SERIALIZER.
+        jsons.set_serializer(lambda bytes, **_: hex_dump_dictionary(bytes), bytes, fork_inst = self.json_serializer)
+        jsons.set_serializer(lambda i, **_: '<image>', Image.Image, fork_inst = self.json_serializer)
+        jsons.set_serializer(lambda i, **_: '<palette>', ImagePalette.ImagePalette, fork_inst = self.json_serializer)
+        jsons.set_serializer(lambda i, **_: '<mmap>', mmap.mmap, fork_inst = self.json_serializer)
+        # TODO: Document why this is necessary.
+        jsons.suppress_warnings(True, fork_inst = self.json_serializer)
+
+        # EXPORT THE METADATA.
+        export_directory = self.create_export_directory(root_directory_path)
+        json_filepath = os.path.join(export_directory, f"{self.filename}.json")
+        with open(json_filepath, 'w') as json_file:
+            file_as_dictionary = jsons.dump(self, strip_privates = strip_privates, fork_inst = self.json_serializer)
+            json.dump(file_as_dictionary, json_file)
