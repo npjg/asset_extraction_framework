@@ -16,7 +16,7 @@ class CommandLineArguments:
           f'Extracts assets (text, sounds, bitmaps, animations) from {application_name} into a human-comprehensible structure.'
           f'\n\n{application_description}'))
 
-    input_argument_help = f'Pass a filepath(s) to process the {application_name} file(s) in that path.'
+    input_argument_help = f'Pass a folder or filepath(s) to process the {application_name} file(s) in that path.'
     self.argument_parser.add_argument('input', nargs = '+', help = input_argument_help)
 
     export_argument_help = (
