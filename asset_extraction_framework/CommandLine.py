@@ -1,5 +1,4 @@
 import argparse
-import logging
 from typing import List
 
 ## Parses command-line arguments for an asset extraction script.
@@ -68,16 +67,6 @@ class CommandLineArguments:
     # PARSE THE ARGUMENTS.
     # TODO: Specify the type here.
     arguments =  self.argument_parser.parse_args(raw_command_line)
-
-    # SET THE GLOBAL DEBUG LEVEL.
-    # This level should not change through the life of the application.
-    # So we will just set it now so the client needn't worry about it.
-    # The argument will still be present in the returned arguments,
-    # so the client can do with it what it wants.
-    if arguments.debug:
-      logging.basicConfig(level = logging.DEBUG)
-    else:
-      logging.basicConfig(level = logging.WARNING)
 
     # RETURN THE PARSED ARGUMENTS.
     return arguments
