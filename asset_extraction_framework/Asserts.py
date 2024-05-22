@@ -1,6 +1,4 @@
 
-from logging import warning
-
 ## Performs an equality assertion with a descriptive failture message that includes the type of data being compared
 ## and the actual/expected values, like the following examples:
 ##  "Expected <displayed_datatype> <expected_value>, received <received_value>"
@@ -26,7 +24,7 @@ def assert_equal(received_value, expected_value, displayed_datatype = 'value', w
         if warn_only:
             # ISSUE A WARNING.
             # In this instance, execution should continue as normal.
-            warning(assertion_failure_message)
+            print(f'WARNING: {assertion_failure_message}')
             # INDICATE THE ASSERTION FAILED.
             return False
         else:
