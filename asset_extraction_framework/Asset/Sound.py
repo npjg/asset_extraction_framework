@@ -39,6 +39,15 @@ class Sound(Asset):
         ## Otherwise, this can be ignored.
         self._ffmpeg_audio_type: Optional[str] = None
 
+    # Provides access to the raw PCM data. This property exists 
+    # so client code can hook into the access and decompress 
+    # data or perform other operations when necessary. A property 
+    # is necessary becuase Python does not permit a derived class
+    # to define a property that overrides a plain member in a base class.
+    @property
+    def pcm(self):
+        return self._pcm
+
     ## Exports the audio in the provided format to the provided filename.
     ## The audio can be exported in any format supported by ffmpeg.
     ## This method also has two meta-formats:
@@ -63,12 +72,12 @@ class Sound(Asset):
                     raw_file.write(self._raw)
             # If the sound is not compressed, self.raw will have no data.
             # In this case, we want to write self.pcm directly instead.
-            elif self._pcm is not None:
+            elif self.pcm is not None:
                 with open(filepath_with_extension, 'wb') as pcm_file:
-                    pcm_file.write(self._pcm)
+                    pcm_file.write(self.pcm)
         else:
             # WRITE A LISTENABLE FILE.
-            if self._pcm is not None:
+            if self.pcm is not None:
                 if self._ffmpeg_audio_type:
                     self.convert_via_ffmpeg([self], filepath_with_extension)
                 else:
@@ -96,8 +105,8 @@ class Sound(Asset):
 
         # WRITE THE AUDIO FRAMES.
         for sound in sounds:
-            if (sound is not None) and (sound._pcm is not None):
-                wave_file.writeframes(sound._pcm)
+            if (sound is not None) and (sound.pcm is not None):
+                wave_file.writeframes(sound.pcm)
 
     ## Writes an audio file by calling into ffmpeg.
     ## This is significantly slower than writing a WAV file with the built-in wave library,
@@ -130,6 +139,6 @@ class Sound(Asset):
             filepath]
         with subprocess.Popen(audio_conversion_command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT) as ffmpeg:
             for sound in sounds:
-                if sound._pcm is not None:
-                    ffmpeg.stdin.write(sound._pcm)
+                if sound.pcm is not None:
+                    ffmpeg.stdin.write(sound.pcm)
             ffmpeg.communicate()

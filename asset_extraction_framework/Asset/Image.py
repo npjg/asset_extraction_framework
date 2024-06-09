@@ -49,6 +49,11 @@ class RectangularBitmap(Asset):
         self._bottom: Optional[int] = None
         self._include_in_export: bool = True
 
+    # Provides access to the raw pixel data. This property exists 
+    # so client code can hook into the access and decompress 
+    # data or perform other operations when necessary. A property 
+    # is necessary becuase Python does not permit a derived class
+    # to define a property that overrides a plain member in a base class.
     @property
     def pixels(self) -> bytes:
         return self._pixels
