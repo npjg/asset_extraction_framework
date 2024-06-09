@@ -128,6 +128,7 @@ class File:
 
         # CONFIGURE THE JSON SERIALIZER.
         jsons.set_serializer(lambda bytes, **_: hex_dump_dictionary(bytes), bytes, fork_inst = self.json_serializer)
+        jsons.set_serializer(lambda bytearray, **_: hex_dump_dictionary(bytearray), bytearray, fork_inst = self.json_serializer)
         jsons.set_serializer(lambda i, **_: '<image>', Image.Image, fork_inst = self.json_serializer)
         jsons.set_serializer(lambda i, **_: '<palette>', ImagePalette.ImagePalette, fork_inst = self.json_serializer)
         jsons.set_serializer(lambda i, **_: '<mmap>', mmap.mmap, fork_inst = self.json_serializer)
